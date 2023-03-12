@@ -366,6 +366,7 @@ def main():
     # Algorithm
     kbuild.build()
     btime, bstatus = kbuild.last_build_time(), kbuild.last_build_was_success()
+    bbtime = btime
     nfiles = kbuild.built_files()
     debug(f"{brbase},{btime},{bstatus},{nfiles},,,")
     if graph:
@@ -437,7 +438,18 @@ def main():
                     for_graphviz += "Yes"
                 else:
                     for_graphviz += "No"
-        for_graphviz += '"]'
+            for_graphviz += '"'
+            if to_check:
+                if btime < btime_c - 5:
+                    for_graphviz += ', color=green'
+                else:
+                    for_graphviz += ', color=red'
+            else:
+                if btime < bbtime - 5:
+                    for_graphviz += ', color=green'
+                else:
+                    for_graphviz += ', color=red'
+            for_graphviz += ']'
         graphviz.append(for_graphviz)
         if strat == "star":
             repo.checkout(brbase)
