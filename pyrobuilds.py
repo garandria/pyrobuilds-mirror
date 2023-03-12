@@ -197,6 +197,15 @@ class Kbuild:
         return isfile("vmlinux") \
             and not call_cmd(cmd, cwd=self._src).returncode == 0
 
+    def built_files(self):
+        n = 0
+        with open(self.STDOUT, 'r') as stream:
+            for line in stream:
+                if isfile(line.split()[-1]):
+                    n += 1
+        return n
+
+
     def safe(self, vmlinux):
         grow, shrink, add, remove, up, down, delta, old, new, otot, ntot =\
             bloatometer.calc("vmlinux", vmlinux, "tTdDbBrR")
@@ -313,12 +322,17 @@ def main():
                         required=True,
                         type=int,
                         help="Number of iteration")
+    parser.add_argument("--graph",
+                        action="store_true",
+                        default=False)
+
     args = parser.parse_args()
     src = args.src.rstrip('/')
     base = args.base
     strat = args.strategy
     budget = args.n
     to_check = args.check
+    graph = args.graph
     # ----------------------------------------------------------------------
 
     # Kconfig
@@ -347,13 +361,27 @@ def main():
     # Mutator
     mutator = Mutator(base_config, kconfig)
 
+    if graph:
+        graphviz = ["digraph pyrobuilds {"]
     # Algorithm
     kbuild.build()
     btime, bstatus = kbuild.last_build_time(), kbuild.last_build_was_success()
-    debug(f"{brbase},{btime},{bstatus},,,")
+    nfiles = kbuild.built_files()
+    debug(f"{brbase},{btime},{bstatus},{nfiles},,,")
+    if graph:
+        for_graphviz = ""
+        if bstatus:
+            for_graphviz += "Build successful"
+        else:
+            for_graphviz += "Build failed"
+        graphviz.append(f'{brbase}[label="{base}\\n{for_graphviz}\\nBuild time: {btime}\\nFiles: {nfiles}"]')
     repo.add_all()
     repo.commit(f"Clean build of {brbase}")
     bpref = strat
+    if graph:
+        prev = brbase
+        with open("../out.dot", 'w') as dot:
+            dot.write("\n".join(graphviz) + "}")
     for i in range(1, budget+1):
         brn = f"{bpref}{i:02d}"
         repo.create_branch(brn)
@@ -362,9 +390,10 @@ def main():
         kbuild.build()
         btime = kbuild.last_build_time()
         bstatus = kbuild.last_build_was_success()
+        nfiles = kbuild.built_files()
         diff = base_config.diff(mutant)
         ndiff = sum(map(len, diff.values()))
-        debug(f"{brn},{btime},{bstatus},{sym}={val},{sub},{ndiff}", end="")
+        debug(f"{brn},{btime},{bstatus},{nfiles},{sym}={val},{sub},{ndiff}", end="")
         repo.add_all()
         repo.commit(f"Build for {brn}")
         if to_check:
@@ -387,8 +416,40 @@ def main():
         else:
             debug("")
 
+        if graph:
+            for_graphviz = f'{brn}[label="'
+            if bstatus:
+                for_graphviz += "Build successful"
+            else:
+                for_graphviz += "Build failed"
+            for_graphviz += '\\n'
+            for_graphviz += f"Build time: {btime}s"
+            if to_check:
+                for_graphviz += f"/{btime_c}s"
+            for_graphviz += '\\n'
+            for_graphviz += f"Mutation: {sym}={val} ({sub})\\n"
+            for_graphviz += f"Files: {nfiles}\\n"
+            for_graphviz +=\
+                f"Diff: +{len(diff['+'])},-{len(diff['-'])},->{len(diff['->'])}\\n"
+            if to_check:
+                for_graphviz += "Consistency: "
+                if consistency:
+                    for_graphviz += "Yes"
+                else:
+                    for_graphviz += "No"
+        for_graphviz += '"]'
+        graphviz.append(for_graphviz)
         if strat == "star":
             repo.checkout(brbase)
+            if graph:
+                graphviz.append(f"{brbase} -> {brn}")
+        else:
+            if graph:
+                graphviz.append(f"{prev} -> {brn}")
+            prev = brn
+        if graph:
+            with open("../out.dot", 'w') as dot:
+                dot.write("\n".join(graphviz) + "}")
 
 
 
