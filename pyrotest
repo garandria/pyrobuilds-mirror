@@ -1,18 +1,18 @@
 #!/bin/bash
 
-rm -rf linux-5.13
+docker pull garandria/linux-build-env
+docker run -v $(pwd):/home garandria/linux-build-env:latest rm -rf linux-5.13
 if [ ! -f linux-5.13.tar.gz ] ; then
 	curl -O https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.13.tar.gz
 fi
 tar -xf linux-5.13.tar.gz
 cp configfix-cmd/* linux-5.13/scripts/kconfig/
-docker pull garandria/linux-build-env
 docker run \
 	   -v $(pwd):/home \
 	   garandria/linux-build-env \
 	   python3 pyrobuilds.py \
 	   --src linux-5.13 \
 	   --base defconfig \
-	   --strategy star \
+	   --strategy explorer \
 	   -n 3 \
-	   --check
+	   --graph # > result.csv
